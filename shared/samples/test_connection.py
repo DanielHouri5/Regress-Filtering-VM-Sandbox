@@ -1,6 +1,5 @@
 # test_connection.py
 import socket
-import sys
 
 target_ip = "38.29.212.164" 
 port = 80
@@ -14,3 +13,4 @@ try:
     s.close()
 except Exception as e:
     print(f"[!] Connection failed as expected: {e}")
+    

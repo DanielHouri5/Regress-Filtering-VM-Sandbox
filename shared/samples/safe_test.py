@@ -6,3 +6,4 @@ try:
     print("[+] Safe connection established!")
 except Exception as e:
     print(f"[-] Failed: {e}")
+    
