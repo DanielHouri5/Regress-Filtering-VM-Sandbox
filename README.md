@@ -36,8 +36,13 @@ If a connection to a known malicious Command & Control (C2) server is detected, 
 
 Run the following commands from the project root:
 
+Build the Management Controller 
 ```bash
-# Build the Management Controllerdocker build -t sandbox-controller .# Build the Isolated Runtime Environmentdocker build -f Dockerfile.runtime -t sandbox-runtime .
+docker build -t sandbox-controller .
+```
+Build the Isolated Runtime Environment
+```bash
+docker build -f Dockerfile.runtime -t sandbox-runtime .
 ```
 
 ### 2. Execute a Sample Analysis

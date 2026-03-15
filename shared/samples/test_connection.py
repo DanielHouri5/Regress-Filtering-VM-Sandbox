@@ -1,7 +1,7 @@
 # test_connection.py
 import socket
 
-target_ip = "38.29.212.164" 
+target_ip = "143.92.51.45" 
 port = 80
 
 print(f"[*] Starting connection test to {target_ip}...")

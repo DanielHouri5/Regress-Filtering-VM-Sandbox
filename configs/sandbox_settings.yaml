@@ -1,5 +1,0 @@
-sandbox:
-  container_timeout_sec: 60
-  network_disabled: true
-  image_name: sandbox-runtime
-  report_dir: shared/reports

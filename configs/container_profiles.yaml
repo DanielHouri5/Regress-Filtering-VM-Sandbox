@@ -1,4 +1,0 @@
-default:
-  max_memory: 80
-  max_processes: 30
-  max_runtime_sec: 30
