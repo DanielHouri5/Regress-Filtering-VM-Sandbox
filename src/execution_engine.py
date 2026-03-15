@@ -91,7 +91,7 @@ class ExecutionEngine:
         # Short delay to ensure monitoring is active before execution begins
         time.sleep(2) 
 
-        print(f"[*] Executing sample: {self.sample_path.name}")
+        # print(f"[*] Executing sample: {self.sample_path.name}")
         try:
             # Execute suspicious file inside isolated container
             result = self.container_mgr.exec_sample(self.container, self.sample_path.name)

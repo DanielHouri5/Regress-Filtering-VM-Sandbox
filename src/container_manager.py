@@ -1,7 +1,6 @@
 import os
 import socket
 import docker
-from pathlib import Path
 
 class ContainerManager:
     """

@@ -16,17 +16,17 @@ If a connection to a known malicious Command & Control (C2) server is detected, 
 2.  **Environment Isolation:** A dedicated "Target Container" is created with a shared network namespace to the monitor.
 3.  **Active Monitoring:** The Network Monitor utilizes **Scapy** for real-time packet inspection on the `eth0` interface.
 4.  **Detection & Response:**
-    -   Outgoing packets are inspected for malicious destination IPs.
-    -   **Automated Mitigation:** Upon detection, the system injects `iptables` rules into the Target Container to block both `INPUT` and `OUTPUT` traffic for that IP.
+    - Outgoing packets are inspected for malicious destination IPs.
+    - **Automated Mitigation:** Upon detection, the system injects `iptables` rules into the Target Container to block both `INPUT` and `OUTPUT` traffic for that IP.
 5.  **Final Verdict:** After execution, the engine analyzes total packet count, block frequency, and threat severity to provide a final security **Verdict** (CLEAN, SUSPICIOUS, or MALICIOUS).
 
 ---
 
 ## 🛠️ System Requirements
 
--   **Docker Desktop:** Installed and running.
--   **Linux-based Shell:** Git Bash (Windows), WSL2, or native Linux.
--   **Internet Access:** Required for real-time Threat Intelligence updates.
+- **Docker Desktop:** Installed and running.
+- **Linux-based Shell:** Git Bash (Windows), WSL2, or native Linux.
+- **Internet Access:** Required for real-time Threat Intelligence updates.
 
 ---
 
@@ -37,7 +37,10 @@ If a connection to a known malicious Command & Control (C2) server is detected, 
 Run the following commands from the project root:
 
 ```bash
-# Build the Management Controllerdocker build -t sandbox-controller .# Build the Isolated Runtime Environmentdocker build -f Dockerfile.runtime -t sandbox-runtime .
+# Build the Management Controller
+docker build -t sandbox-controller .
+# Build the Isolated Runtime Environment
+docker build -f Dockerfile.runtime -t sandbox-runtime .
 ```
 
 ### 2. Execute a Sample Analysis
