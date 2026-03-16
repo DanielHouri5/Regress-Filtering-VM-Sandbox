@@ -1,5 +1,6 @@
 import os
-from scapy.all import sniff, IP
+from scapy.all import sniff, IP, TCP
+from src import vm_manager
 from src.security_utils import ThreatIntelUtility  
 from datetime import datetime
 from colorama import Fore, Style, init
@@ -17,7 +18,7 @@ class NetworkMonitor:
     - Applies active response (iptables blocking)
     - Tracks statistics for final verdict evaluation
     """
-    def __init__(self, container=None):
+    def __init__(self, vm_manager=None):
         """
         Initialize monitoring environment.
 
@@ -28,7 +29,10 @@ class NetworkMonitor:
 
         # Timestamped log file for this analysis session
         local_time = datetime.now().strftime("%d-%m-%Y_%H-%M-%S")
-        self.log_path = f"/sandbox/shared/reports/traffic_log_{local_time}.txt"
+        # במקום הנתיב הקודם, צור תיקיית reports בתוך הפרויקט
+        report_dir = os.path.join(os.getcwd(), "reports")
+        os.makedirs(report_dir, exist_ok=True)
+        self.log_path = os.path.join(report_dir, f"traffic_log_{local_time}.txt")
 
         # Explicit whitelist (local and known safe IP)
         self.allowed_ips = ["127.0.0.1", "8.8.8.8"]
@@ -37,12 +41,14 @@ class NetworkMonitor:
         self.intel_utility = ThreatIntelUtility()
         self.intel_utility.refresh_data()
 
-        self.container = container
+        self.vm_mgr = vm_manager
         
         # Behavioral tracking counters
         self.blocked_count = 0
         self.total_packets = 0
         self.unique_blocked_ips = set()
+        self.detected_processes = set()
+        self.checked_ips = set()
         
         # Ensure report directory exists
         os.makedirs(os.path.dirname(self.log_path), exist_ok=True)
@@ -54,19 +60,33 @@ class NetworkMonitor:
     def start_monitoring(self, runtime_sec):
         """
         Begin live network monitoring session.
-
-        Args:
-            runtime_sec (int): Duration (seconds) to monitor traffic.
         """
+        from scapy.all import conf  # ייבוא כאן כדי למנוע בעיות אתחול
+
         print(f"\n{Fore.CYAN}{'='*65}")
-        print(f"{Fore.CYAN}  LIVE NETWORK MONITORING  (Duration: {runtime_sec}s)")
+        print(f"{Fore.CYAN}   LIVE NETWORK MONITORING   (Duration: {runtime_sec}s)")
         print(f"{Fore.CYAN}{'='*65}")
         header = f"{'TIME':<10} | {'SOURCE':<15} | {'DESTINATION':<15} | {'STATUS'}"
         print(Fore.WHITE + Style.BRIGHT + header)
         print("-" * 65)
+
+        # חיפוש דינמי של כרטיס ה-VirtualBox בווינדוס
+        target_iface = None
+        for iface in conf.ifaces.values():
+            if "VirtualBox Host-Only" in iface.description:
+                target_iface = iface.name
+                break
         
-        # Capture only IP packets on eth0 interface
-        sniff(iface="eth0", filter="ip", prn=self._process_packet, timeout=runtime_sec, store=0)
+        if not target_iface:
+            # אם לא מצאנו, ננסה להשתמש בברירת המחדל למקרה שאתה בלינוקס
+            target_iface = "vboxnet0"
+            
+        try:
+            # Capture packets
+            sniff(iface=target_iface, prn=self._process_packet, timeout=runtime_sec, store=0)
+        except Exception as e:
+            print(f"\n{Fore.RED}[!] Sniffer Error: {e}")
+            print(f"{Fore.YELLOW}[*] Hint: Make sure you are running as Administrator!")
 
     def _process_packet(self, packet):
         """
@@ -87,36 +107,25 @@ class NetworkMonitor:
         dest_ip = packet[IP].dst
         src_ip = packet[IP].src
         
-        # Ignore internal Docker bridge communication
-        if dest_ip.startswith("172.") and src_ip.startswith("172."): return
-
         timestamp = datetime.now().strftime('%H:%M:%S')
-        
+        if dest_ip in self.checked_ips: return
         # Whitelist check
         if dest_ip in self.allowed_ips:
             status = "ALLOWED"
             color = Fore.GREEN
-
+        # elif packet.haslayer(TCP) and (packet[TCP].dport == 22 or packet[TCP].sport == 22):
+        #     return
         # Threat intelligence check
         elif self.intel_utility.is_malicious(dest_ip) or self.intel_utility.is_malicious(src_ip):
-            malicious_ip = dest_ip if self.intel_utility.is_malicious(dest_ip) else src_ip
-
-            # Apply dynamic firewall rule
-            self._block_ip(malicious_ip)
-
-            status = "BLOCKED (MALICIOUS)"
+            self._analyze_and_block(dest_ip)
+            status = "BLOCKED"
             color = Fore.RED
-            
-            # Track unique malicious IPs
-            if malicious_ip not in self.unique_blocked_ips:
-                self.unique_blocked_ips.add(malicious_ip)
-                self.blocked_count += 1
-
         # Non-whitelisted but not blacklisted
         else:
             status = "UNAUTHORIZED"
             color = Fore.YELLOW
 
+        self.checked_ips.add(dest_ip)
         # Console output
         print(f"{color}{timestamp:<10} | {src_ip:<15} | {dest_ip:<15} | {status}")
 
@@ -125,19 +134,23 @@ class NetworkMonitor:
             f.write(f"[{timestamp}] {src_ip} -> {dest_ip} | {status}\n")
             f.flush()
 
-    def _block_ip(self, ip_address):
-        """
-        Dynamically block malicious IP via iptables rules
-        inside the sandbox container.
+    def _analyze_and_block(self, malicious_ip):        
+        proc_info = self.vm_mgr.get_process_by_ip(malicious_ip)
+        
+        self.unique_blocked_ips.add(malicious_ip)
+        self.detected_processes.add(proc_info)
 
-        Args:
-            ip_address (str): IP address to block.
-        """
-        if self.container and ip_address not in self.allowed_ips:
-            # Block outbound traffic to malicious IP
-            self.container.exec_run(f"iptables -A OUTPUT -d {ip_address} -j DROP")
-            # Block inbound traffic from malicious IP
-            self.container.exec_run(f"iptables -A INPUT -s {ip_address} -j DROP")
+        self.blocked_count += 1
+
+        if "pid=" in proc_info:
+            try:
+                pid = proc_info.split("pid=")[1].split(",")[0]
+                print(f"{Fore.RED}[*] Terminating Process ID: {pid}...")
+                
+                self.vm_mgr.execute_remote(f"sudo kill -9 {pid}")
+                self.vm_mgr.execute_remote(f"sudo iptables -A OUTPUT -d {malicious_ip} -j DROP")
+            except Exception as e:
+                print(f"[!] Action failed: {e}")
 
     def get_analysis_summary(self):
         """
@@ -159,7 +172,7 @@ class NetworkMonitor:
             verdict = "MALICIOUS"
             color = Fore.RED
             recommendation = "DANGER: This file attempted to contact known malicious servers. DO NOT RUN."
-        elif self.total_packets > 100:
+        elif self.total_packets > 150:
             verdict = "SUSPICIOUS"
             color = Fore.YELLOW
             recommendation = "Warning: Unusual amount of network activity detected."
@@ -170,6 +183,7 @@ class NetworkMonitor:
             "blocked_count": self.blocked_count,
             "unique_ips": list(self.unique_blocked_ips),
             "total_packets": self.total_packets,
+            "detected_processes": list(self.detected_processes),
             "recommendation": recommendation
         }
     

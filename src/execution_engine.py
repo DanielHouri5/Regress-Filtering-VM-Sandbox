@@ -2,7 +2,7 @@ import threading
 import time
 from pathlib import Path
 from colorama import Fore, Style
-from src.container_manager import ContainerManager
+from src.vm_manager import VMManager 
 from src.network_monitor import NetworkMonitor
 
 class ExecutionEngine:
@@ -26,30 +26,22 @@ class ExecutionEngine:
             sample_path (Path | str): Path to the suspicious file.
         """
         self.sample_path = Path(sample_path)
-        self.container_mgr = ContainerManager()
-        self.container = None
+        self.vm_mgr = VMManager(
+            host="", 
+            user="", 
+            password=""
+        )
         self.monitor = None
 
     def __enter__(self):
-        """
-        Context manager entry point.
-
-        Creates and starts an isolated container environment,
-        then initializes the network monitor.
-
-        Returns:
-            ExecutionEngine: Self instance for chained execution.
-        """
-        print("[*] Setting up isolated environment...")
-
-        # Create sandbox container
-        self.container = self.container_mgr.create_container()
-        self.container.start()
-
-        # Initialize live network monitor bound to container
-        self.monitor = NetworkMonitor(container=self.container)
-
-        return self
+        print(f"{Fore.CYAN}[*] Connecting to Analysis VM ({self.vm_mgr.host})...")
+        try:
+            self.vm_mgr.connect()
+            self.monitor = NetworkMonitor(vm_manager=self.vm_mgr)
+            return self
+        except Exception as e:
+            print(f"{Fore.RED}[!] Failed to initialize VM environment: {e}")
+            raise
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         """
@@ -58,15 +50,10 @@ class ExecutionEngine:
         Ensures container is stopped and removed,
         even if execution fails.
         """
-        if self.container:
-            print(f"\n[*] Cleaning up: Stopping and removing container...")
-            print("-" * 100)
-            try:
-                self.container.stop(timeout=2)
-                self.container.remove()
-            except:
-                # Suppress cleanup errors to avoid masking original exception
-                pass
+        print(f"\n{Fore.CYAN}[*] Tearing down environment...")
+        remote_path = f"/tmp/{self.sample_path.name}"
+        self.vm_mgr.cleanup(remote_path)
+        self.vm_mgr.close()
 
     def run_analysis(self, runtime_sec):
         """
@@ -82,7 +69,10 @@ class ExecutionEngine:
             runtime_sec (int): Duration (seconds) for monitoring window.
         """
         print(f"[*] Starting monitoring thread for {runtime_sec}s...")
-        
+        remote_path = f"/tmp/{self.sample_path.name}"
+        print(f"[*] Uploading sample to VM: {remote_path}")
+        self.vm_mgr.upload_file(str(self.sample_path), remote_path)
+
         # Launch monitoring in a separate daemon thread
         monitor_thread = threading.Thread(target=self.monitor.start_monitoring, args=(runtime_sec,))
         monitor_thread.daemon = True
@@ -92,9 +82,8 @@ class ExecutionEngine:
         time.sleep(2) 
 
         try:
-            # Execute suspicious file inside isolated container
-            result = self.container_mgr.exec_sample(self.container, self.sample_path.name)
-
+            self.vm_mgr.execute_remote(f"python3 {remote_path}")
+            time.sleep(runtime_sec)
         except Exception as e:
             print(f"[!] Execution error: {e}")
 
@@ -105,28 +94,22 @@ class ExecutionEngine:
         self._display_final_report()
 
     def _display_final_report(self):
-        """
-        Display summarized behavioral analysis results.
-
-        Report includes:
-        - Final security verdict
-        - Packet count
-        - Number of blocked malicious IPs
-        - Unique blocked IP list
-        - Recommended action
-        """
         summary = self.monitor.get_analysis_summary()
         c = summary['color']
         
-        print(f"\n{c}{Style.BRIGHT}{'='*65}")
-        print(f"{c}{Style.BRIGHT}  FINAL SECURITY VERDICT: [ {summary['verdict']} ]")
-        print(f"{c}{Style.BRIGHT}{'='*65}")
-        print(f"{Fore.WHITE}  - Analyzed Packets: {summary['total_packets']}")
-        print(f"{Fore.WHITE}  - Malicious Blocks: {summary['blocked_count']}")
+        print(f"\n{c}{Style.BRIGHT}{'='*70}")
+        print(f"{c}{Style.BRIGHT}  ANALYSIS COMPLETE - VERDICT: [ {summary['verdict']} ]")
+        print(f"{c}{Style.BRIGHT}{'='*70}")
+        print(f"{Fore.WHITE}  - Total Packets Scanned: {summary['total_packets']}")
+        print(f"{Fore.WHITE}  - Malicious Connections: {summary['blocked_count']}")
         
-        if summary['unique_ips']:
-            print(f"{Fore.WHITE}  - Blocked IPs: {', '.join(summary['unique_ips'])}")
+        if summary['detected_processes']:
+            print(f"{Fore.YELLOW}\n  - Processes involved in threats:")
+            for proc in summary['detected_processes']:
+                print(f"    [!] {proc}")
+        
+        print(f"{Fore.WHITE}\n  - Unique Blocked IPs: {summary['unique_ips']}")
+        print(f"{Fore.WHITE}  - Detected Processes: {summary['detected_processes']}")
+        print(f"\n{c}  Recommendation: {summary['recommendation']}")
+        print(f"{c}{Style.BRIGHT}{'='*70}\n")
             
-        print(f"\n{c}{Style.BRIGHT}  RECOMMENDATION: {summary['recommendation']}")
-        print(f"{c}{'='*65}\n")
-        

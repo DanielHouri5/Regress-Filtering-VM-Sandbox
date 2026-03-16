@@ -1,4 +1,4 @@
-docker>=7.1.0
 scapy==2.5.0
 requests==2.31.0
 colorama==0.4.6
+paramiko==2.12.0
