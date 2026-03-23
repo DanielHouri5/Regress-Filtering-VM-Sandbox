@@ -25,5 +25,6 @@ Thumbs.db
 # Logs / Reports
 # ======================
 *.log
+reports/*.txt
 
 
