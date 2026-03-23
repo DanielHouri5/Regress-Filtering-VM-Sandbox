@@ -74,22 +74,33 @@ class ExecutionEngine:
         print(f"[*] Uploading sample to VM: {remote_path}")
         self.vm_mgr.upload_file(str(self.sample_path), remote_path)
 
+        stop_event = threading.Event()
         # Launch monitoring in a separate daemon thread
-        monitor_thread = threading.Thread(target=self.monitor.start_monitoring, args=(runtime_sec,))
-        monitor_thread.daemon = True
+        monitor_thread = threading.Thread(
+            target=self.monitor.start_monitoring,
+            args=(runtime_sec, stop_event)
+        )
         monitor_thread.start()
         
         # Short delay to ensure monitoring is active before execution begins
         time.sleep(2) 
-
         try:
-            self.vm_mgr.execute_remote(f"python3 {remote_path}")
-            time.sleep(runtime_sec)
+            # Exec returns immediately; stdout/stderr channels become ready when command exits.
+            _stdin, stdout, _stderr = self.vm_mgr.execute_remote(f"python3 {remote_path}")
+
+            start_time = time.monotonic()
+            while time.monotonic() - start_time < runtime_sec:
+                if stdout.channel.exit_status_ready():
+                    break
+                time.sleep(1)
         except Exception as e:
             print(f"[!] Execution error: {e}")
+        finally:
+            # Stop monitoring as soon as the VM execution ends (or runtime_sec is reached).
+            stop_event.set()
 
-        # Wait for monitoring thread to complete or timeout
-        monitor_thread.join(timeout=runtime_sec)
+        # Wait for monitoring thread to stop cleanly
+        monitor_thread.join()
         
         # Generate final behavioral verdict
         self._display_final_report()

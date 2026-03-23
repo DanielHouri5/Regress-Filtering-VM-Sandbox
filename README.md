@@ -28,18 +28,20 @@ sudo systemctl enable --now ssh
 - Set network:
   - Adapter → **Host-Only Adapter** (VirtualBox)
 
-2. Sandbox Initialization (Inside VM)
+### 2. Sandbox Initialization (Inside VM)
 ```bash
 sudo ip route add default via <'your HOST IP'>
 sudo bash -c 'while true; do ss -tupn >> /tmp/network_log.txt; sleep 1; done' &
 ```
 
-3. Install dependencies (On Host Machine):
+### 3. go to 'config.py' and set the values according to your VM details.
+
+### 4. Install dependencies (On Host Machine):
 ```bash
 pip install -r requirements.txt
 ```
 
-4. Execution (On Host Machine)
+### 5. Execution (On Host Machine)
 ```bash
 python -m src.main --sample shared/samples/safe_test.py
 ```

@@ -1,5 +1,6 @@
 import os
-from scapy.all import sniff, IP, TCP
+import time
+from scapy.all import IP, TCP, AsyncSniffer
 from src import vm_manager
 from src.security_utils import ThreatIntelUtility  
 from datetime import datetime
@@ -57,7 +58,7 @@ class NetworkMonitor:
         with open(self.log_path, "w", encoding="utf-8") as f:
             f.write(f"--- Sandbox Network Analysis: {local_time} ---\n\n")
 
-    def start_monitoring(self, runtime_sec):
+    def start_monitoring(self, runtime_sec, stop_event=None):
         """
         Begin live network monitoring session.
         """
@@ -82,8 +83,21 @@ class NetworkMonitor:
             target_iface = "vboxnet0"
             
         try:
-            # Capture packets
-            sniff(iface=target_iface, prn=self._process_packet, timeout=runtime_sec, store=0)
+            # Capture packets using AsyncSniffer so we can stop early.
+            sniffer = AsyncSniffer(
+                iface=target_iface,
+                prn=self._process_packet,
+                store=False
+            )
+            sniffer.start()
+
+            end_time = time.monotonic() + runtime_sec
+            while time.monotonic() < end_time:
+                if stop_event is not None and stop_event.is_set():
+                    break
+                time.sleep(0.5)
+
+            sniffer.stop()
         except Exception as e:
             print(f"\n{Fore.RED}[!] Sniffer Error: {e}")
             print(f"{Fore.YELLOW}[*] Hint: Make sure you are running as Administrator!")
