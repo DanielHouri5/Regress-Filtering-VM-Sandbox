@@ -1,11 +1,13 @@
 import os
 import time
-from scapy.all import IP, TCP, AsyncSniffer
+from scapy.all import IP, TCP, AsyncSniffer , conf
 from src import vm_manager
 from src.security_utils import ThreatIntelUtility  
 from datetime import datetime
 from colorama import Fore, Style, init
 
+conf.no_payload_report = True
+conf.verb = 0
 # Automatically reset terminal color after each print
 init(autoreset=True)
 
@@ -41,6 +43,7 @@ class NetworkMonitor:
         # Initialize and refresh external threat intelligence
         self.intel_utility = ThreatIntelUtility()
         self.intel_utility.refresh_data()
+        self.suspicious_ips = set() # למעקב בדו"ח הסופי
 
         self.vm_mgr = vm_manager
         
@@ -62,7 +65,6 @@ class NetworkMonitor:
         """
         Begin live network monitoring session.
         """
-        from scapy.all import conf  # ייבוא כאן כדי למנוע בעיות אתחול
 
         print(f"\n{Fore.CYAN}{'='*65}")
         print(f"{Fore.CYAN}   LIVE NETWORK MONITORING   (Duration: {runtime_sec}s)")
@@ -71,17 +73,15 @@ class NetworkMonitor:
         print(Fore.WHITE + Style.BRIGHT + header)
         print("-" * 65)
 
-        # חיפוש דינמי של כרטיס ה-VirtualBox בווינדוס
         target_iface = None
         for iface in conf.ifaces.values():
-            if "VirtualBox Host-Only" in iface.description:
+            if hasattr(iface, 'ip') and iface.ip == "192.168.56.1":
                 target_iface = iface.name
                 break
         
         if not target_iface:
-            # אם לא מצאנו, ננסה להשתמש בברירת המחדל למקרה שאתה בלינוקס
             target_iface = "vboxnet0"
-            
+        target_iface = "VirtualBox Host-Only Ethernet Adapter"    
         try:
             # Capture packets using AsyncSniffer so we can stop early.
             sniffer = AsyncSniffer(
@@ -136,8 +136,17 @@ class NetworkMonitor:
             color = Fore.RED
         # Non-whitelisted but not blacklisted
         else:
-            status = "UNAUTHORIZED"
-            color = Fore.YELLOW
+            # Fallback heuristic based on IP metadata (reputation/proxy/hosting).
+            rep = self.intel_utility.get_ip_reputation(dest_ip)
+            if rep.get("is_suspicious"):
+                status = f"SUSPICIOUS (IP Reputation: {rep.get('reason')})"
+                color = Fore.LIGHTYELLOW_EX
+                country = rep.get("country") or "Unknown"
+                isp = rep.get("isp") or "Unknown"
+                self.suspicious_ips.add(f"{dest_ip} ({country}, {isp}) - {rep.get('reason')}")
+            else:
+                status = "UNAUTHORIZED"
+                color = Fore.YELLOW
 
         self.checked_ips.add(dest_ip)
         # Console output
@@ -186,6 +195,10 @@ class NetworkMonitor:
             verdict = "MALICIOUS"
             color = Fore.RED
             recommendation = "DANGER: This file attempted to contact known malicious servers. DO NOT RUN."
+        elif len(self.suspicious_ips) > 0:
+            verdict = "SUSPICIOUS (Heuristic)"
+            color = Fore.YELLOW
+            recommendation = f"Warning: Connections flagged as suspicious by IP reputation: {', '.join(self.suspicious_ips)}"
         elif self.total_packets > 150:
             verdict = "SUSPICIOUS"
             color = Fore.YELLOW
@@ -197,6 +210,7 @@ class NetworkMonitor:
             "blocked_count": self.blocked_count,
             "unique_ips": list(self.unique_blocked_ips),
             "total_packets": self.total_packets,
+            "suspicious_ips": list(self.suspicious_ips),
             "detected_processes": list(self.detected_processes),
             "recommendation": recommendation
         }

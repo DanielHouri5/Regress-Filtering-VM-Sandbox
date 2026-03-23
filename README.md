@@ -30,7 +30,7 @@ sudo systemctl enable --now ssh
 
 ### 2. Sandbox Initialization (Inside VM)
 ```bash
-sudo ip route add default via <'your HOST IP'>
+sudo ip route add default via 192.168.56.1
 sudo bash -c 'while true; do ss -tupn >> /tmp/network_log.txt; sleep 1; done' &
 ```
 

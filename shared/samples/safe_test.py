@@ -1,7 +1,7 @@
 import socket
 import time
 
-target = "101.132.153.5"
+target = "8.8.8.8"
 print(f"[*] Starting persistent connection attempt to {target}...")
 
 while True: # לולאה אינסופית - המערכת שלך תהרוג את התהליך הזה עם kill -9

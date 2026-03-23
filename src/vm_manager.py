@@ -1,4 +1,5 @@
 import os
+import time
 import paramiko
 
 class VMManager:
@@ -30,20 +31,31 @@ class VMManager:
     def get_process_by_ip(self, target_ip):
         # אנחנו מחפשים בלוג שנוצר בתוך ה-VM
         cmd = f"grep {target_ip} /tmp/network_log.txt | tail -n 1"
-        stdin, stdout, stderr = self.ssh.exec_command(cmd)
-        output = stdout.read().decode().strip()
-        
-        if output:
-            # הפלט ייראה בערך ככה: 17:05:12 tcp ESTAB ... users:(("firefox",pid=2345,fd=67))
-            if "users:((" in output:
-                try:
-                    proc_info = output.split('users:((')[1].split('))')[0]
-                    return proc_info # יחזיר "firefox",pid=2345
-                except:
-                    pass
-            return "Process match found in logs"
-            
-        return "Unknown Process (No log entry)"
+
+        # The monitoring thread can detect a "malicious" IP before the VM log
+        # has that exact entry flushed to /tmp/network_log.txt.
+        # Retry briefly on empty output to make parsing deterministic.
+        last_raw_output = ""
+        for _ in range(3):
+            stdin, stdout, stderr = self.ssh.exec_command(cmd)
+            raw_output = stdout.read().decode().strip()
+            if raw_output:
+                last_raw_output = raw_output
+                break
+            time.sleep(0.8)
+
+        # Keep parsing behavior identical, just more reliable when empty.
+        if "users:((" in last_raw_output:
+            try:
+                output = last_raw_output.split("users:((")[1].split("))")[0]
+                parts = output.split(",")
+                process_name = parts[0].strip('"')  # מוריד את הגרשיים
+                pid = parts[1].split("=")[1]
+                return process_name, pid
+            except (IndexError, ValueError) as e:
+                print(f"Parsing error: {e}")
+
+        return None, None
 
     def execute_remote(self, command):
         return self.ssh.exec_command(command)
