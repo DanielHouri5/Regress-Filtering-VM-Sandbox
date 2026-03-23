@@ -174,7 +174,8 @@ class ThreatIntelUtility:
                 self.ip_reputation_cache[ip_address] = result
                 return result
         except Exception as e:
-            print(f"DEBUG: Reputation API failed: {e}")
+            # Keep runtime output clean; the caller will use the returned status.
+            pass
 
         result = {
             "is_suspicious": False,

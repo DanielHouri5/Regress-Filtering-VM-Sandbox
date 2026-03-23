@@ -8,3 +8,6 @@ USER="evehackmon"
 
 #VM password:
 PASSWORD="E050598h"
+
+#Runtime in seconds:
+RUNTIME=600

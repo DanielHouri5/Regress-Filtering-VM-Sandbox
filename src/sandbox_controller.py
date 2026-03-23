@@ -1,6 +1,7 @@
 # src/sandbox_controller.py
 from pathlib import Path
 from src.execution_engine import ExecutionEngine
+from config import RUNTIME
 
 class SandboxController:
     """
@@ -33,7 +34,7 @@ class SandboxController:
             # ExecutionEngine handles container lifecycle + monitoring.
             # Context manager ensures automatic cleanup.
             with ExecutionEngine(full_path) as engine:
-                engine.run_analysis(runtime_sec=120)
+                engine.run_analysis(runtime_sec=RUNTIME)
             return True
         except Exception as e:
             # Top-level failure handler for execution-related errors.

@@ -5,9 +5,10 @@ A lightweight malware analysis sandbox that runs suspicious Python files inside 
 ## Dependencies
 
 - Python 3.7+
-- VM with SSH access
+- VM (ubuntu) with SSH access
+- Virtualbox hypervisor
 
-### Python packages
+## Python packages
 
 scapy==2.5.0
 requests==2.31.0
@@ -48,7 +49,7 @@ python -m src.main --sample shared/samples/safe_test.py
 
 ## What happens?
 Upload sample to VM
-Execute for ~120 seconds
+Execute for up to ~10 minutes (or until the VM process finishes)
 Monitor network activity
-Generate report
-Cleanup resources
+Generate report (stored under `reports/`)
+Cleanup resources (remote temp file + reset iptables)

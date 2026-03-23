@@ -51,11 +51,12 @@ class VMManager:
                 parts = output.split(",")
                 process_name = parts[0].strip('"')  # מוריד את הגרשיים
                 pid = parts[1].split("=")[1]
-                return process_name, pid
+                fd = parts[2].split("=")[1]
+                return process_name, pid, fd
             except (IndexError, ValueError) as e:
                 print(f"Parsing error: {e}")
 
-        return None, None
+        return None, None, None
 
     def execute_remote(self, command):
         return self.ssh.exec_command(command)

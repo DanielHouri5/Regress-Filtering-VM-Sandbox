@@ -140,7 +140,7 @@ class NetworkMonitor:
             rep = self.intel_utility.get_ip_reputation(dest_ip)
             if rep.get("is_suspicious"):
                 status = f"SUSPICIOUS (IP Reputation: {rep.get('reason')})"
-                color = Fore.LIGHTYELLOW_EX
+                color = Fore.MAGENTA
                 country = rep.get("country") or "Unknown"
                 isp = rep.get("isp") or "Unknown"
                 self.suspicious_ips.add(f"{dest_ip} ({country}, {isp}) - {rep.get('reason')}")
@@ -197,7 +197,7 @@ class NetworkMonitor:
             recommendation = "DANGER: This file attempted to contact known malicious servers. DO NOT RUN."
         elif len(self.suspicious_ips) > 0:
             verdict = "SUSPICIOUS (Heuristic)"
-            color = Fore.YELLOW
+            color = Fore.MAGENTA
             recommendation = f"Warning: Connections flagged as suspicious by IP reputation: {', '.join(self.suspicious_ips)}"
         elif self.total_packets > 150:
             verdict = "SUSPICIOUS"
