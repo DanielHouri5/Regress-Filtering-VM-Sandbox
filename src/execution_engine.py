@@ -4,6 +4,7 @@ from pathlib import Path
 from colorama import Fore, Style
 from src.vm_manager import VMManager 
 from src.network_monitor import NetworkMonitor
+from config import HOST, USER, PASSWORD
 
 class ExecutionEngine:
     """
@@ -27,9 +28,9 @@ class ExecutionEngine:
         """
         self.sample_path = Path(sample_path)
         self.vm_mgr = VMManager(
-            host="", 
-            user="", 
-            password=""
+            host=HOST, 
+            user=USER, 
+            password=PASSWORD
         )
         self.monitor = None
 
