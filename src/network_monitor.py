@@ -1,10 +1,13 @@
 import os
-from scapy.all import sniff, IP, TCP
+import socket
+from scapy.all import sniff, IP, conf
 from src import vm_manager
 from src.security_utils import ThreatIntelUtility  
 from datetime import datetime
 from colorama import Fore, Style, init
 
+conf.no_payload_report = True
+conf.verb = 0
 # Automatically reset terminal color after each print
 init(autoreset=True)
 
@@ -40,6 +43,8 @@ class NetworkMonitor:
         # Initialize and refresh external threat intelligence
         self.intel_utility = ThreatIntelUtility()
         self.intel_utility.refresh_data()
+        self.intel_utility.fetch_new_domains_free()
+        self.suspicious_ips = set() # למעקב בדו"ח הסופי
 
         self.vm_mgr = vm_manager
         
@@ -73,17 +78,17 @@ class NetworkMonitor:
         # חיפוש דינמי של כרטיס ה-VirtualBox בווינדוס
         target_iface = None
         for iface in conf.ifaces.values():
-            if "VirtualBox Host-Only" in iface.description:
+            if hasattr(iface, 'ip') and iface.ip == "192.168.56.1":
                 target_iface = iface.name
                 break
         
         if not target_iface:
             # אם לא מצאנו, ננסה להשתמש בברירת המחדל למקרה שאתה בלינוקס
             target_iface = "vboxnet0"
-            
+        target_iface = "VirtualBox Host-Only Ethernet Adapter"    
         try:
             # Capture packets
-            sniff(iface=target_iface, prn=self._process_packet, timeout=runtime_sec, store=0)
+            sniff(iface=target_iface, filter="ip", prn=self._process_packet, timeout=runtime_sec, store=0)
         except Exception as e:
             print(f"\n{Fore.RED}[!] Sniffer Error: {e}")
             print(f"{Fore.YELLOW}[*] Hint: Make sure you are running as Administrator!")
@@ -122,8 +127,20 @@ class NetworkMonitor:
             color = Fore.RED
         # Non-whitelisted but not blacklisted
         else:
-            status = "UNAUTHORIZED"
-            color = Fore.YELLOW
+            hostname = dest_ip  # ברירת מחדל אם התרגום ייכשל
+            try:
+                # ה-try/except הזה מונע את שגיאת 11004 שראית
+                hostname = socket.gethostbyaddr(dest_ip)[0]
+            except Exception:
+                pass # פשוט נמשיך עם ה-IP כפי שהוא
+
+            if self.intel_utility.check_ip_status(hostname):
+                status = "SUSPICIOUS (New Domain)"
+                color = Fore.LIGHTYELLOW_EX
+                self.suspicious_ips.add(f"{dest_ip} ({hostname})")
+            else:
+                status = "UNAUTHORIZED"
+                color = Fore.YELLOW
 
         self.checked_ips.add(dest_ip)
         # Console output
@@ -172,6 +189,10 @@ class NetworkMonitor:
             verdict = "MALICIOUS"
             color = Fore.RED
             recommendation = "DANGER: This file attempted to contact known malicious servers. DO NOT RUN."
+        elif len(self.suspicious_ips) > 0:
+            verdict = "SUSPICIOUS (Heuristic)"
+            color = Fore.YELLOW
+            recommendation = f"Warning: Connections to very new domains detected: {', '.join(self.suspicious_ips)}"
         elif self.total_packets > 150:
             verdict = "SUSPICIOUS"
             color = Fore.YELLOW
@@ -183,6 +204,7 @@ class NetworkMonitor:
             "blocked_count": self.blocked_count,
             "unique_ips": list(self.unique_blocked_ips),
             "total_packets": self.total_packets,
+            "suspicious_ips": list(self.suspicious_ips),
             "detected_processes": list(self.detected_processes),
             "recommendation": recommendation
         }

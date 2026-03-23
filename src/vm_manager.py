@@ -31,19 +31,21 @@ class VMManager:
         # אנחנו מחפשים בלוג שנוצר בתוך ה-VM
         cmd = f"grep {target_ip} /tmp/network_log.txt | tail -n 1"
         stdin, stdout, stderr = self.ssh.exec_command(cmd)
-        output = stdout.read().decode().strip()
-        
-        if output:
-            # הפלט ייראה בערך ככה: 17:05:12 tcp ESTAB ... users:(("firefox",pid=2345,fd=67))
-            if "users:((" in output:
-                try:
-                    proc_info = output.split('users:((')[1].split('))')[0]
-                    return proc_info # יחזיר "firefox",pid=2345
-                except:
-                    pass
-            return "Process match found in logs"
-            
-        return "Unknown Process (No log entry)"
+        raw_output = stdout.read().decode().strip()
+        print("raw_output: ", raw_output)
+        if 'users:((' in raw_output:
+            try:
+                output = raw_output.split('users:((')[1].split('))')[0]
+                parts = output.split(',')
+                process_name = parts[0].strip('"') # מוריד את הגרשיים
+                pid = parts[1].split('=')[1]
+                fd = parts[2].split('=')[1]
+
+                return process_name, pid, fd
+            except (IndexError, ValueError) as e:
+                print(f"Parsing error: {e}")
+                return None, None, None
+        return None, None, None
 
     def execute_remote(self, command):
         return self.ssh.exec_command(command)

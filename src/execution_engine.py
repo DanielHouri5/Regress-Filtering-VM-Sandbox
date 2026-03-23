@@ -27,9 +27,9 @@ class ExecutionEngine:
         """
         self.sample_path = Path(sample_path)
         self.vm_mgr = VMManager(
-            host="", 
-            user="", 
-            password=""
+            host="192.168.56.101", 
+            user="daniel", 
+            password="120879hd"
         )
         self.monitor = None
 
@@ -109,6 +109,7 @@ class ExecutionEngine:
                 print(f"    [!] {proc}")
         
         print(f"{Fore.WHITE}\n  - Unique Blocked IPs: {summary['unique_ips']}")
+        print(f"{Fore.WHITE}\n  - Suspicious IPs: {summary['suspicious_ips']}")
         print(f"{Fore.WHITE}  - Detected Processes: {summary['detected_processes']}")
         print(f"\n{c}  Recommendation: {summary['recommendation']}")
         print(f"{c}{Style.BRIGHT}{'='*70}\n")
