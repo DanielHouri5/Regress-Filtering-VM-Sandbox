@@ -1,62 +1,52 @@
-# 🛡️ Regress-Filtering-Sandbox
+# Regress Filtering VM Sandbox
 
-A high-performance, Docker-based **Malware Analysis Sandbox** designed for dynamic file execution in an isolated environment. The system features real-time network sniffing, automated threat intelligence correlation, and active bidirectional traffic interception.
+A lightweight malware analysis sandbox that runs suspicious Python files inside an isolated VM, monitors behavior, and generates security reports.
 
----
+## Dependencies
 
-## 📋 System Overview
+- Python 3.7+
+- VM with SSH access
 
-The Regress-Filtering-Sandbox provides a secure environment to execute and monitor suspicious Python scripts. By leveraging **Docker-out-of-Docker (DooD)** technology, it spawns isolated runtime containers, monitors their network stack, and cross-references all traffic with live **Threat Intelligence** feeds.
+### Python packages
 
-If a connection to a known malicious Command & Control (C2) server is detected, the system immediately drops the connection at the kernel level using `iptables`.
+scapy==2.5.0
+requests==2.31.0
+colorama==0.4.6
+paramiko==2.12.0
 
-## 🔄 Data Flow & Architecture
+## 🚀 How to Run
 
-1.  **Initialization:** The Controller pulls the latest malicious IP indicators (IOCs) from the **ThreatFox API**.
-2.  **Environment Isolation:** A dedicated "Target Container" is created with a shared network namespace to the monitor.
-3.  **Active Monitoring:** The Network Monitor utilizes **Scapy** for real-time packet inspection on the `eth0` interface.
-4.  **Detection & Response:**
-    - Outgoing packets are inspected for malicious destination IPs.
-    - **Automated Mitigation:** Upon detection, the system injects `iptables` rules into the Target Container to block both `INPUT` and `OUTPUT` traffic for that IP.
-5.  **Final Verdict:** After execution, the engine analyzes total packet count, block frequency, and threat severity to provide a final security **Verdict** (CLEAN, SUSPICIOUS, or MALICIOUS).
+### 1. VM Preparation (One-Time Setup)
 
----
-
-## 🛠️ System Requirements
-
-- **Docker Desktop:** Installed and running.
-- **Linux-based Shell:** Git Bash (Windows), WSL2, or native Linux.
-- **Internet Access:** Required for real-time Threat Intelligence updates.
-
----
-
-## 🚀 Getting Started
-
-### 1. Build the Images
-
-Run the following commands from the project root:
-
-Build the Management Controller
-
+- Install and enable SSH:
 ```bash
-# Build the Management Controller
-docker build -t sandbox-controller .
-# Build the Isolated Runtime Environment
-docker build -f Dockerfile.runtime -t sandbox-runtime .
+sudo apt update
+sudo apt install openssh-server -y
+sudo systemctl enable --now ssh
 ```
 
-### 2. Execute a Sample Analysis
+- Set network:
+  - Adapter → **Host-Only Adapter** (VirtualBox)
 
-Use this generic command to run any Python sample. It automatically maps your local paths and initiates the monitoring sequence:
-
+2. Sandbox Initialization (Inside VM)
 ```bash
-MSYS_NO_PATHCONV=1 docker run -it --privileged   -v //var/run/docker.sock:/var/run/docker.sock   -v "$(pwd)/shared:/sandbox/shared"   -e HOST_SHARED_PATH="$(pwd)/shared"   sandbox-controller --sample shared/samples/test_connection.py
+sudo ip route add default via <'your HOST IP'>
+sudo bash -c 'while true; do ss -tupn >> /tmp/network_log.txt; sleep 1; done' &
 ```
 
-📊 Analysis Outputs
+3. Install dependencies (On Host Machine):
+```bash
+pip install -r requirements.txt
+```
 
-Live Console: A color-coded table displaying real-time traffic status (ALLOWED, UNAUTHORIZED, or BLOCKED).
+4. Execution (On Host Machine)
+```bash
+python -m src.main --sample shared/samples/safe_test.py
+```
 
-Traffic Logs: Detailed forensic logs are saved to shared/reports/traffic_log_DD-MM-YYYY.txt.
-
-Security Verdict: A comprehensive final summary including risk assessment and recommendations.
+## What happens?
+Upload sample to VM
+Execute for ~120 seconds
+Monitor network activity
+Generate report
+Cleanup resources
