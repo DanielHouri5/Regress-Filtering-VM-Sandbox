@@ -1,8 +1,7 @@
 # src/network_monitor.py
 import os
 import time
-from scapy.all import IP, TCP, AsyncSniffer , conf
-from src import vm_manager
+from scapy.all import IP, AsyncSniffer , conf
 from src.security_utils import ThreatIntelUtility  
 from datetime import datetime
 from colorama import Fore, Style, init
@@ -42,7 +41,7 @@ class NetworkMonitor:
 
         # Initialize and refresh external threat intelligence
         self.intel_utility = ThreatIntelUtility()
-        self.intel_utility.refresh_data()
+        self.intel_utility.fetch_malicious_ips()
         self.suspicious_ips = set() 
 
         self.vm_mgr = vm_manager
@@ -157,15 +156,10 @@ class NetworkMonitor:
 
         self.blocked_count += 1
 
-        if "pid=" in proc_info:
-            try:
-                pid = proc_info.split("pid=")[1].split(",")[0]
-                print(f"{Fore.RED}[*] Terminating Process ID: {pid}...")
-                
-                self.vm_mgr.execute_remote(f"sudo kill -9 {pid}")
-                self.vm_mgr.execute_remote(f"sudo iptables -A OUTPUT -d {malicious_ip} -j DROP")
-            except Exception as e:
-                print(f"[!] Action failed: {e}")
+        try:
+            self.vm_mgr.execute_remote(f"sudo iptables -A OUTPUT -d {malicious_ip} -j DROP")
+        except Exception as e:
+            print(f"[!] Action failed: {e}")
 
     def get_analysis_summary(self):
             """
@@ -183,7 +177,7 @@ class NetworkMonitor:
                 verdict = "SUSPICIOUS (Heuristic)"
                 color = Fore.MAGENTA
                 recommendation = f"Warning: Connections flagged as suspicious by IP reputation: {', '.join(self.suspicious_ips)}"
-            elif self.total_packets > 150:
+            elif self.total_packets > 300:
                 verdict = "SUSPICIOUS"
                 color = Fore.YELLOW
                 recommendation = "Warning: Unusual amount of network activity detected."
@@ -212,9 +206,11 @@ class NetworkMonitor:
             f.write(f"  - Total Packets Scanned: {self.total_packets}\n")
             f.write(f"  - Malicious Connections: {self.blocked_count}\n")
             f.write(f"  - Processes involved in threats:\n")
-            for i in range(len(self.detected_processes)):
-                f.write(f"    Proccess: {self.detected_processes[i]} | Blocked IP: {self.unique_blocked_ips[i]}\n")
-            f.write(f"  - Suspicious IPs: {list(self.suspicious_ips)}\n")
+            for i in range(len(list(self.detected_processes))):
+                f.write(f"    Proccess: {list(self.detected_processes)[i]} | Blocked IP: {list(self.unique_blocked_ips)[i]}\n")
+            f.write(f"  - Suspicious IPs:\n")
+            for ip in list(self.suspicious_ips):
+                f.write(f"    {ip}\n")
             f.write(f"  - Recommendation: {recommendation}\n")
             f.write(f"{'='*70}\n")
         

@@ -115,15 +115,13 @@ class ExecutionEngine:
         print(f"{c}{Style.BRIGHT}{'='*70}")
         print(f"{Fore.WHITE}  - Total Packets Scanned: {summary['total_packets']}")
         print(f"{Fore.WHITE}  - Malicious Connections: {summary['blocked_count']}")
-        
         if summary['detected_processes']:
-            print(f"{Fore.YELLOW}\n  - Processes involved in threats:")
-            for proc in summary['detected_processes']:
-                print(f"    [!] {proc}")
-        
-        print(f"{Fore.WHITE}\n  - Unique Blocked IPs: {summary['unique_ips']}")
-        print(f"{Fore.WHITE}\n  - Suspicious IPs: {summary['suspicious_ips']}")
-        print(f"{Fore.WHITE}  - Detected Processes: {summary['detected_processes']}")
+            print(f"\n  - Processes involved in threats:")
+            for i in range(len(list(summary['detected_processes']))):
+                print(f"    Proccess: {list(summary['detected_processes'])[i]} | Blocked IP: {list(summary['unique_ips'])[i]}")
+        print(f"{Fore.WHITE}\n  - Suspicious IPs:")
+        for ip in summary['suspicious_ips']:
+            print(f"    {ip}")
         print(f"\n{c}  Recommendation: {summary['recommendation']}")
         print(f"{c}{Style.BRIGHT}{'='*70}\n")
             

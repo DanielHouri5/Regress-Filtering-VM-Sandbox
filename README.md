@@ -4,52 +4,47 @@ A lightweight malware analysis sandbox that runs suspicious Python files inside 
 
 ## Dependencies
 
-- Python 3.7+
-- VM (ubuntu) with SSH access
-- Virtualbox hypervisor
+-   Python 3.7+
+-   VM (ubuntu) with SSH access
+-   Virtualbox hypervisor
 
 ## Python packages
 
-scapy==2.5.0
-requests==2.31.0
-colorama==0.4.6
-paramiko==2.12.0
+scapy==2.5.0requests==2.31.0colorama==0.4.6paramiko==2.12.0
 
 ## 🚀 How to Run
 
 ### 1. VM Preparation (One-Time Setup)
 
-- Install and enable SSH:
+-   Install and enable SSH:
+
 ```bash
-sudo apt update
-sudo apt install openssh-server -y
-sudo systemctl enable --now ssh
+sudo apt updatesudo apt install openssh-server -ysudo systemctl enable --now ssh
 ```
 
-- Set network:
-  - Adapter → **Host-Only Adapter** (VirtualBox)
+-   Set network:
+    -   Adapter → **Host-Only Adapter** (VirtualBox)
 
 ### 2. Sandbox Initialization (Inside VM)
+
 ```bash
-sudo ip route add default via <'host ip here'>
-sudo bash -c 'while true; do ss -tupn >> /tmp/network_log.txt; sleep 1; done' &
+sudo ip route add default via 192.168.56.1sudo bash -c 'while true; do ss -tupn >> /tmp/network_log.txt; sleep 1; done' &
 ```
 
 ### 3. go to 'config.py' and set the values according to your VM details.
 
 ### 4. Install dependencies (On Host Machine):
+
 ```bash
 pip install -r requirements.txt
 ```
 
 ### 5. Execution (On Host Machine)
+
 ```bash
 python -m src.main --sample shared/samples/safe_test.py
 ```
 
 ## What happens?
-Upload sample to VM
-Execute for up to ~10 minutes (or until the VM process finishes)
-Monitor network activity
-Generate report (stored under `reports/`)
-Cleanup resources (remote temp file + reset iptables)
+
+Upload sample to VMExecute for up to ~10 minutes (or until the VM process finishes)Monitor network activityGenerate report (stored under `reports/`)Cleanup resources (remote temp file + reset iptables)

@@ -1,45 +1,77 @@
 # fetch_suspicious_ip.py
 """
-This script fetches a list of suspicious IP addresses from a live blocklist and checks their reputation using the ThreatIntelUtility. It combines static IPs with dynamic ones to provide a comprehensive view of potentially malicious activity. The results are printed in a simple table format indicating whether each IP is considered suspicious or safe.
+This script fetches a list of suspicious IP addresses from Blocklist.de and 
+validates them using our ThreatIntelUtility. It demonstrates how the system 
+identifies hosting, proxies, and malicious data centers.
 """
 import requests
 import time
+import sys
+import os
+
+# הוספת נתיב הפרויקט כדי שיוכל למצוא את התיקייה src
+sys.path.append(os.getcwd())
+
 from src.security_utils import ThreatIntelUtility
+from colorama import Fore, Style, init
+
+# אתחול צבעים לטרמינל
+init(autoreset=True)
 
 def get_live_threat_ips():
-    print("[*] Fetching live suspicious IPs from Blocklist.de...")
+    """
+    Fetches a small sample of IPs recently reported for malicious activity.
+    """
+    print(f"{Fore.CYAN}[*] Fetching live reported IPs from Blocklist.de...")
     try:
-        # Fetch IPs reported in the last 24 hours
-        response = requests.get("https://lists.blocklist.de/lists/all.txt", timeout=10)
+        # שליחת User-Agent כדי להיראות כמו דפדפן
+        headers = {'User-Agent': 'Mozilla/5.0'}
+        response = requests.get("https://lists.blocklist.de/lists/all.txt", headers=headers, timeout=10)
         if response.status_code == 200:
-            return response.text.splitlines()[:15]
+            # לוקחים רק 10 כתובות כדי לא לחרוג ממכסת ה-API במהירות
+            return list(set(response.text.splitlines()))[:10]
     except Exception as e:
-        print(f"[-] Failed to fetch blocklist: {e}")
+        print(f"{Fore.RED}[-] Failed to fetch blocklist: {e}")
     return []
 
 def main():
     t = ThreatIntelUtility()
     
-    # Static IPs + Dynamic ones from the web
+    # רשימה מעורבת: בטוחים, ידועים כ-VPN/Hosting, ודינמיים מהרשת
+    # 185.220.101.10 הוא צומת Tor ידוע (אמור להיות מזוהה כ-Proxy/Hosting)
     ips_to_check = ["8.8.8.8", "1.1.1.1", "185.220.101.10"]
     live_ips = get_live_threat_ips()
     ips_to_check.extend(live_ips)
 
-    print(f"\n{'IP Address':<15} | {'Suspicious':<10}")
-    print("-" * 30)
+    print(f"\n{Style.BRIGHT}{'IP ADDRESS':<18} | {'STATUS':<12} | {'COUNTRY':<10} | {'REASON'}")
+    print("-" * 80)
 
     for ip in ips_to_check:
         try:
-            # Small delay to avoid API rate limits (Max 45/min for ip-api)
-            time.sleep(1.4) 
-            rep = t.get_ip_reputation(ip)
-            is_suspicious = rep.get("is_suspicious", False)
+            # השהיה של 1.5 שניות כדי לכבד את המכסה של ip-api (45 בקשות לדקה)
+            time.sleep(1.5) 
             
-            status = "!! YES !!" if is_suspicious else "SAFE"
-            print(f"{ip:<15} | {status:<10}")
+            # הרצת הלוגיקה שבנית ב-security_utils
+            rep = t.get_ip_reputation(ip)
+            
+            is_suspicious = rep.get("is_suspicious", False)
+            country = rep.get("country", "N/A")
+            reason = rep.get("reason", "Clean")
+            
+            if is_suspicious:
+                color = Fore.YELLOW
+                status = "SUSPICIOUS"
+            else:
+                color = Fore.GREEN
+                status = "SAFE"
+
+            print(f"{color}{ip:<18} | {status:<12} | {country:<10} | {reason}")
             
         except Exception as e:
-            print(f"[-] Error checking {ip}: {e}")
+            print(f"{Fore.RED}[-] Error checking {ip}: {e}")
+
+    print("-" * 80)
+    print(f"{Fore.CYAN}[*] Analysis complete. Suspicious IPs would be flagged/blocked in the Sandbox.")
 
 if __name__ == "__main__":
     main()
