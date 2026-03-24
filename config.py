@@ -1,13 +1,13 @@
 # config.py
 
 #VM ip:
-HOST="192.168.56.102"
+HOST=""
 
 #VM user:
-USER="evehackmon"
+USER=""
 
 #VM password:
-PASSWORD="E050598h"
+PASSWORD=""
 
 #Runtime in seconds:
 RUNTIME=120
