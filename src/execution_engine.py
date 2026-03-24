@@ -1,3 +1,4 @@
+# src/execution_engine.py
 import threading
 import time
 from pathlib import Path
@@ -86,7 +87,7 @@ class ExecutionEngine:
         time.sleep(2) 
         try:
             # Exec returns immediately; stdout/stderr channels become ready when command exits.
-            _stdin, stdout, _stderr = self.vm_mgr.execute_remote(f"python3 {remote_path}")
+            _ , stdout, _ = self.vm_mgr.execute_remote(f"python3 {remote_path}")
 
             start_time = time.monotonic()
             while time.monotonic() - start_time < runtime_sec:

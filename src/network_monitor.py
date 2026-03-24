@@ -1,3 +1,4 @@
+# src/network_monitor.py
 import os
 import time
 from scapy.all import IP, TCP, AsyncSniffer , conf
@@ -32,7 +33,6 @@ class NetworkMonitor:
 
         # Timestamped log file for this analysis session
         local_time = datetime.now().strftime("%d-%m-%Y_%H-%M-%S")
-        # במקום הנתיב הקודם, צור תיקיית reports בתוך הפרויקט
         report_dir = os.path.join(os.getcwd(), "reports")
         os.makedirs(report_dir, exist_ok=True)
         self.log_path = os.path.join(report_dir, f"traffic_log_{local_time}.txt")
@@ -43,7 +43,7 @@ class NetworkMonitor:
         # Initialize and refresh external threat intelligence
         self.intel_utility = ThreatIntelUtility()
         self.intel_utility.refresh_data()
-        self.suspicious_ips = set() # למעקב בדו"ח הסופי
+        self.suspicious_ips = set() 
 
         self.vm_mgr = vm_manager
         
@@ -73,14 +73,6 @@ class NetworkMonitor:
         print(Fore.WHITE + Style.BRIGHT + header)
         print("-" * 65)
 
-        target_iface = None
-        for iface in conf.ifaces.values():
-            if hasattr(iface, 'ip') and iface.ip == "192.168.56.1":
-                target_iface = iface.name
-                break
-        
-        if not target_iface:
-            target_iface = "vboxnet0"
         target_iface = "VirtualBox Host-Only Ethernet Adapter"    
         try:
             # Capture packets using AsyncSniffer so we can stop early.
@@ -176,42 +168,53 @@ class NetworkMonitor:
                 print(f"[!] Action failed: {e}")
 
     def get_analysis_summary(self):
-        """
-        Generate behavioral security verdict.
-
-        Heuristic logic:
-        - If malicious IP contacted → MALICIOUS
-        - If excessive traffic (>100 packets) → SUSPICIOUS
-        - Otherwise → CLEAN
-
-        Returns:
-            dict: Summary containing verdict, stats, and recommendation.
-        """
-        verdict = "CLEAN"
-        color = Fore.GREEN
-        recommendation = "File appears safe for execution."
-        
-        if self.blocked_count > 0:
-            verdict = "MALICIOUS"
-            color = Fore.RED
-            recommendation = "DANGER: This file attempted to contact known malicious servers. DO NOT RUN."
-        elif len(self.suspicious_ips) > 0:
-            verdict = "SUSPICIOUS (Heuristic)"
-            color = Fore.MAGENTA
-            recommendation = f"Warning: Connections flagged as suspicious by IP reputation: {', '.join(self.suspicious_ips)}"
-        elif self.total_packets > 150:
-            verdict = "SUSPICIOUS"
-            color = Fore.YELLOW
-            recommendation = "Warning: Unusual amount of network activity detected."
+            """
+            Generate behavioral security verdict.
+            """
+            verdict = "CLEAN"
+            color = Fore.GREEN
+            recommendation = "File appears safe for execution."
             
-        return {
-            "verdict": verdict,
-            "color": color,
-            "blocked_count": self.blocked_count,
-            "unique_ips": list(self.unique_blocked_ips),
-            "total_packets": self.total_packets,
-            "suspicious_ips": list(self.suspicious_ips),
-            "detected_processes": list(self.detected_processes),
-            "recommendation": recommendation
-        }
-    
+            if self.blocked_count > 0:
+                verdict = "MALICIOUS"
+                color = Fore.RED
+                recommendation = "DANGER: This file attempted to contact known malicious servers. DO NOT RUN."
+            elif len(self.suspicious_ips) > 0:
+                verdict = "SUSPICIOUS (Heuristic)"
+                color = Fore.MAGENTA
+                recommendation = f"Warning: Connections flagged as suspicious by IP reputation: {', '.join(self.suspicious_ips)}"
+            elif self.total_packets > 150:
+                verdict = "SUSPICIOUS"
+                color = Fore.YELLOW
+                recommendation = "Warning: Unusual amount of network activity detected."
+            
+            self._log_final_report(verdict, recommendation)
+
+            return {
+                "verdict": verdict,
+                "color": color,
+                "blocked_count": self.blocked_count,
+                "unique_ips": list(self.unique_blocked_ips),
+                "total_packets": self.total_packets,
+                "suspicious_ips": list(self.suspicious_ips),
+                "detected_processes": list(self.detected_processes),
+                "recommendation": recommendation
+            }
+        
+    def _log_final_report(self, verdict, recommendation):
+        """
+        Writes the final summary to the log file.
+        """
+        with open(self.log_path, "a", encoding="utf-8") as f:
+            f.write(f"\n{'='*70}\n")
+            f.write(f"  ANALYSIS COMPLETE - VERDICT: [ {verdict} ]\n")
+            f.write(f"{'='*70}\n")
+            f.write(f"  - Total Packets Scanned: {self.total_packets}\n")
+            f.write(f"  - Malicious Connections: {self.blocked_count}\n")
+            f.write(f"  - Processes involved in threats:\n")
+            for i in range(len(self.detected_processes)):
+                f.write(f"    Proccess: {self.detected_processes[i]} | Blocked IP: {self.unique_blocked_ips[i]}\n")
+            f.write(f"  - Suspicious IPs: {list(self.suspicious_ips)}\n")
+            f.write(f"  - Recommendation: {recommendation}\n")
+            f.write(f"{'='*70}\n")
+        

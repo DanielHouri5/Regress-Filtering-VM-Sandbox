@@ -1,3 +1,4 @@
+# src/security_utils.py
 from datetime import datetime, timedelta
 import socket
 import ipaddress
@@ -19,9 +20,6 @@ class ThreatIntelUtility:
         self.ip_reputation_cache = {}  # ip -> reputation dict
         # URL to fetch recent malicious IPs in CSV format
         self.url = "https://threatfox.abuse.ch/export/csv/ip-port/recent/"
-
-    def _normalize_domain(self, domain: str) -> str:
-        return domain.strip().rstrip(".").lower() if domain else ""
 
     def refresh_data(self):
         """
@@ -70,50 +68,6 @@ class ThreatIntelUtility:
         """
         result = ip in self.blacklisted_ips
         return result
-
-    def fetch_new_domains_free(self):
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-        }
-    
-        for days_back in [1, 2, 3]:
-            try:
-                date_str = (datetime.now() - timedelta(days=days_back)).strftime('%Y-%m-%d')
-                url = f"https://www.whoisds.com/whois-database/newly-registered-domains/{date_str}.zip/nrd"
-                
-                response = requests.get(url, headers=headers, timeout=15) # הוספנו את ה-headers
-                print("response: ", response.status_code)
-                if response.status_code == 200 and b'PK' in response.content[:2]:
-                    with zipfile.ZipFile(io.BytesIO(response.content)) as z:
-                        for filename in z.namelist():
-                            if filename.lower().endswith('.txt'):
-                                with z.open(filename) as f:
-                                    # חילוץ הדומיינים לקבוצה (set)
-                                    content = f.read().decode('utf-8', errors='ignore')
-                                    # Normalize to improve matching accuracy.
-                                    # - strip whitespace
-                                    # - remove trailing dot from FQDNs
-                                    # - lowercase
-                                    domains = {
-                                        line.strip().rstrip(".").lower()
-                                        for line in content.splitlines()
-                                        if line and line.strip()
-                                    }
-                                    self.new_domains = domains
-
-                    print("list of new domains: ", list(self.new_domains)[0:5])
-                    print(f"[+] Successfully loaded {len(self.new_domains)} new domains.")
-                    return True
-            except Exception as e:
-                print(f"DEBUG: Failed for {date_str}: {e}")
-                continue
-        return False
-
-    def check_ip_status(self, hostname):
-        if not hostname:
-            return False
-        normalized = hostname.strip().rstrip(".").lower()
-        return normalized in self.new_domains
 
     def get_ip_reputation(self, ip_address: str):
         """
@@ -185,54 +139,3 @@ class ThreatIntelUtility:
         }
         self.ip_reputation_cache[ip_address] = result
         return result
-
-    def get_domain_age_info(self, target_ip):
-        try:
-            target = str(target_ip).strip() if target_ip is not None else ""
-            if not target:
-                return None, False, None
-
-            # If we already received a hostname, use it directly.
-            # If we received an IP, try reverse DNS first.
-            normalized_target = self._normalize_domain(target)
-            try:
-                is_ip = ipaddress.ip_address(target)
-            except ValueError:
-                is_ip = None
-
-            if is_ip:
-                try:
-                    domain_name = socket.gethostbyaddr(target)[0]
-                except Exception:
-                    domain_name = target
-            else:
-                domain_name = target
-
-            domain_name = self._normalize_domain(domain_name)
-            if not domain_name:
-                return None, False, None
-
-            # Cache to avoid repeated WHOIS lookups.
-            if domain_name in self.domain_age_cache:
-                return self.domain_age_cache[domain_name]
-
-            # 2. שאילתת WHOIS
-            w = whois.whois(domain_name)
-            # 3. חילוץ תאריך יצירה (מטפל במקרה של רשימה או תאריך בודד)
-            creation_date = w.creation_date
-            if isinstance(creation_date, list):
-                creation_date = creation_date[0]
-
-            if creation_date:
-                days_ago = (datetime.now() - creation_date).days
-                is_new = days_ago < 60
-                result = (domain_name, is_new, days_ago)
-                self.domain_age_cache[domain_name] = result
-                return result
-                
-        except Exception as e:
-            print(f"Whois lookup failed for {target_ip}: {e}")
-            
-        return None, False, None
-
- 

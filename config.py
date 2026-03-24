@@ -10,4 +10,4 @@ USER="evehackmon"
 PASSWORD="E050598h"
 
 #Runtime in seconds:
-RUNTIME=600
+RUNTIME=120

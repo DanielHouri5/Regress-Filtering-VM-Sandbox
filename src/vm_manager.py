@@ -1,3 +1,4 @@
+# src/vm_manager.py
 import os
 import time
 import paramiko
@@ -29,7 +30,6 @@ class VMManager:
         sftp.close()
 
     def get_process_by_ip(self, target_ip):
-        # אנחנו מחפשים בלוג שנוצר בתוך ה-VM
         cmd = f"grep {target_ip} /tmp/network_log.txt | tail -n 1"
 
         # The monitoring thread can detect a "malicious" IP before the VM log

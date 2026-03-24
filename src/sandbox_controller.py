@@ -18,22 +18,17 @@ class SandboxController:
             bool: True if execution completed successfully,
                   False if validation or execution failed.
         """
-
-        # Construct the internal sandbox path.
-        # All samples must exist under the /sandbox directory.
-        full_path = Path("/sandbox") / sample_path
-        
         # Validate file existence and type before execution.
-        if not self._is_valid_sample(full_path):
+        if not self._is_valid_sample(Path(sample_path)):
             return False
         
         print("-" * 100)
-        print(f"\n[*] Regress filtering started for: {full_path.name}\n")
+        print(f"\n[*] Regress filtering started for: {Path(sample_path).name}\n")
         
         try:
             # ExecutionEngine handles container lifecycle + monitoring.
             # Context manager ensures automatic cleanup.
-            with ExecutionEngine(full_path) as engine:
+            with ExecutionEngine(Path(sample_path)) as engine:
                 engine.run_analysis(runtime_sec=RUNTIME)
             return True
         except Exception as e:
