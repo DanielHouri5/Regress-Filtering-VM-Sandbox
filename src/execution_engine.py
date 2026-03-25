@@ -8,31 +8,9 @@ from src.network_monitor import NetworkMonitor
 from config import HOST, USER, PASSWORD
 
 class ExecutionEngine:
-    """
-    Orchestrates the full lifecycle of sandbox execution.
-
-    Responsibilities:
-    - Provision isolated container
-    - Start live network monitoring
-    - Execute suspicious file
-    - Collect behavioral data
-    - Produce final verdict
-    - Ensure proper teardown
-    """
-
     def __init__(self, sample_path):
-        """
-        Initialize execution engine state.
-
-        Args:
-            sample_path (Path | str): Path to the suspicious file.
-        """
         self.sample_path = Path(sample_path)
-        self.vm_mgr = VMManager(
-            host=HOST, 
-            user=USER, 
-            password=PASSWORD
-        )
+        self.vm_mgr = VMManager(host=HOST, user=USER, password=PASSWORD)
         self.monitor = None
 
     def __enter__(self):
@@ -46,82 +24,36 @@ class ExecutionEngine:
             raise
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        """
-        Context manager exit point.
-
-        Ensures container is stopped and removed,
-        even if execution fails.
-        """
         print(f"\n{Fore.CYAN}[*] Tearing down environment...")
         remote_path = f"/tmp/{self.sample_path.name}"
         self.vm_mgr.cleanup(remote_path)
         self.vm_mgr.close()
 
     def run_analysis(self, runtime_sec):
-        """
-        Execute the suspicious sample while performing live network monitoring.
+            remote_path = f"/tmp/{self.sample_path.name}"
+            print(f"[*] Uploading sample: {self.sample_path.name}")
+            self.vm_mgr.upload_file(str(self.sample_path), remote_path)
 
-        Workflow:
-        1. Start monitoring in a background thread.
-        2. Execute sample inside container.
-        3. Wait for monitoring window to finish.
-        4. Display final security report.
+            print(f"[*] Starting analysis window ({runtime_sec}s)...")
+            print(f"[*] Executing sample inside VM: {remote_path}")
 
-        Args:
-            runtime_sec (int): Duration (seconds) for monitoring window.
-        """
-        print(f"[*] Starting monitoring thread for {runtime_sec}s...")
-        remote_path = f"/tmp/{self.sample_path.name}"
-        print(f"[*] Uploading sample to VM: {remote_path}")
-        self.vm_mgr.upload_file(str(self.sample_path), remote_path)
-
-        stop_event = threading.Event()
-        # Launch monitoring in a separate daemon thread
-        monitor_thread = threading.Thread(
-            target=self.monitor.start_monitoring,
-            args=(runtime_sec, stop_event)
-        )
-        monitor_thread.start()
-        
-        # Short delay to ensure monitoring is active before execution begins
-        time.sleep(2) 
-        try:
-            # Exec returns immediately; stdout/stderr channels become ready when command exits.
-            _ , stdout, _ = self.vm_mgr.execute_remote(f"python3 {remote_path}")
-
-            start_time = time.monotonic()
-            while time.monotonic() - start_time < runtime_sec:
-                if stdout.channel.exit_status_ready():
-                    break
-                time.sleep(1)
-        except Exception as e:
-            print(f"[!] Execution error: {e}")
-        finally:
-            # Stop monitoring as soon as the VM execution ends (or runtime_sec is reached).
-            stop_event.set()
-
-        # Wait for monitoring thread to stop cleanly
-        monitor_thread.join()
-        
-        # Generate final behavioral verdict
-        self._display_final_report()
-
-    def _display_final_report(self):
-        summary = self.monitor.get_analysis_summary()
-        c = summary['color']
-        
-        print(f"\n{c}{Style.BRIGHT}{'='*70}")
-        print(f"{c}{Style.BRIGHT}  ANALYSIS COMPLETE - VERDICT: [ {summary['verdict']} ]")
-        print(f"{c}{Style.BRIGHT}{'='*70}")
-        print(f"{Fore.WHITE}  - Total Packets Scanned: {summary['total_packets']}")
-        print(f"{Fore.WHITE}  - Malicious Connections: {summary['blocked_count']}")
-        if summary['detected_processes']:
-            print(f"\n  - Processes involved in threats:")
-            for i in range(len(list(summary['detected_processes']))):
-                print(f"    Proccess: {list(summary['detected_processes'])[i]} | Blocked IP: {list(summary['unique_ips'])[i]}")
-        print(f"{Fore.WHITE}\n  - Suspicious IPs:")
-        for ip in summary['suspicious_ips']:
-            print(f"    {ip}")
-        print(f"\n{c}  Recommendation: {summary['recommendation']}")
-        print(f"{c}{Style.BRIGHT}{'='*70}\n")
+            stop_event = threading.Event()
+            monitor_thread = threading.Thread(
+                target=self.monitor.start_monitoring,
+                args=(runtime_sec, stop_event)
+            )
+            monitor_thread.start()
             
+            time.sleep(1) 
+            try:
+                self.vm_mgr.execute_remote(f"python3 {remote_path}")
+                monitor_thread.join()
+                
+            except Exception as e:
+                print(f"[!] Error: {e}")
+            finally:
+                stop_event.set()
+                if monitor_thread.is_alive():
+                    monitor_thread.join()
+
+            self.monitor._display_final_report()

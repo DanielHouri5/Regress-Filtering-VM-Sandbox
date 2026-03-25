@@ -8,63 +8,32 @@ from colorama import Fore, Style, init
 
 conf.no_payload_report = True
 conf.verb = 0
-# Automatically reset terminal color after each print
 init(autoreset=True)
 
 class NetworkMonitor:
-    """
-    Performs behavioral network analysis on sandbox traffic.
-
-    The monitor:
-    - Captures outbound and inbound IP packets
-    - Checks IPs against threat intelligence blacklist
-    - Applies active response (iptables blocking)
-    - Tracks statistics for final verdict evaluation
-    """
     def __init__(self, vm_manager=None):
-        """
-        Initialize monitoring environment.
-
-        Args:
-            container (Container | None):
-                Target container instance (used for applying iptables rules).
-        """
-
-        # Timestamped log file for this analysis session
         local_time = datetime.now().strftime("%d-%m-%Y_%H-%M-%S")
         report_dir = os.path.join(os.getcwd(), "reports")
         os.makedirs(report_dir, exist_ok=True)
         self.log_path = os.path.join(report_dir, f"traffic_log_{local_time}.txt")
 
-        # Explicit whitelist (local and known safe IP)
         self.allowed_ips = ["127.0.0.1", "8.8.8.8"]
-
-        # Initialize and refresh external threat intelligence
         self.intel_utility = ThreatIntelUtility()
         self.intel_utility.fetch_malicious_ips()
-        self.suspicious_ips = set() 
+        
+        self.suspicious_events = [] 
 
         self.vm_mgr = vm_manager
-        
-        # Behavioral tracking counters
-        self.blocked_count = 0
         self.total_packets = 0
-        self.unique_blocked_ips = set()
-        self.detected_processes = set()
+        
+        self.threat_events = [] 
         self.checked_ips = set()
         
-        # Ensure report directory exists
         os.makedirs(os.path.dirname(self.log_path), exist_ok=True)
-
-        # Create new report file
         with open(self.log_path, "w", encoding="utf-8") as f:
             f.write(f"--- Sandbox Network Analysis: {local_time} ---\n\n")
 
     def start_monitoring(self, runtime_sec, stop_event=None):
-        """
-        Begin live network monitoring session.
-        """
-
         print(f"\n{Fore.CYAN}{'='*65}")
         print(f"{Fore.CYAN}   LIVE NETWORK MONITORING   (Duration: {runtime_sec}s)")
         print(f"{Fore.CYAN}{'='*65}")
@@ -74,12 +43,7 @@ class NetworkMonitor:
 
         target_iface = "VirtualBox Host-Only Ethernet Adapter"    
         try:
-            # Capture packets using AsyncSniffer so we can stop early.
-            sniffer = AsyncSniffer(
-                iface=target_iface,
-                prn=self._process_packet,
-                store=False
-            )
+            sniffer = AsyncSniffer(iface=target_iface, prn=self._process_packet, store=False)
             sniffer.start()
 
             end_time = time.monotonic() + runtime_sec
@@ -91,126 +55,141 @@ class NetworkMonitor:
             sniffer.stop()
         except Exception as e:
             print(f"\n{Fore.RED}[!] Sniffer Error: {e}")
-            print(f"{Fore.YELLOW}[*] Hint: Make sure you are running as Administrator!")
 
     def _process_packet(self, packet):
-        """
-        Callback function executed for each captured packet.
-
-        Performs:
-        - Layer validation
-        - Internal traffic filtering
-        - Whitelist check
-        - Threat intelligence validation
-        - Optional active blocking
-        - Logging
-        """
-        # Ignore non-IP packets
         if not packet.haslayer(IP): return
         self.total_packets += 1
 
         dest_ip = packet[IP].dst
         src_ip = packet[IP].src
-        
         timestamp = datetime.now().strftime('%H:%M:%S')
+
         if dest_ip in self.checked_ips: return
-        # Whitelist check
+
         if dest_ip in self.allowed_ips:
             status = "ALLOWED"
             color = Fore.GREEN
-        # elif packet.haslayer(TCP) and (packet[TCP].dport == 22 or packet[TCP].sport == 22):
-        #     return
-        # Threat intelligence check
         elif self.intel_utility.is_malicious(dest_ip) or self.intel_utility.is_malicious(src_ip):
             self._analyze_and_block(dest_ip)
             status = "BLOCKED"
             color = Fore.RED
-        # Non-whitelisted but not blacklisted
         else:
-            # Fallback heuristic based on IP metadata (reputation/proxy/hosting).
             rep = self.intel_utility.get_ip_reputation(dest_ip)
             if rep.get("is_suspicious"):
                 status = f"SUSPICIOUS (IP Reputation: {rep.get('reason')})"
                 color = Fore.MAGENTA
-                country = rep.get("country") or "Unknown"
-                isp = rep.get("isp") or "Unknown"
-                self.suspicious_ips.add(f"{dest_ip} ({country}, {isp}) - {rep.get('reason')}")
+                self._record_suspicious(dest_ip, rep)
             else:
                 status = "UNAUTHORIZED"
                 color = Fore.YELLOW
 
         self.checked_ips.add(dest_ip)
-        # Console output
         print(f"{color}{timestamp:<10} | {src_ip:<15} | {dest_ip:<15} | {status}")
 
-        # Append to persistent log
         with open(self.log_path, "a", encoding="utf-8") as f:
             f.write(f"[{timestamp}] {src_ip} -> {dest_ip} | {status}\n")
-            f.flush()
 
-    def _analyze_and_block(self, malicious_ip):        
-        proc_info = self.vm_mgr.get_process_by_ip(malicious_ip)
+    def _record_suspicious(self, suspicious_ip, rep_data):
+        time.sleep(1.5)
+        proc_name, pid, _ = self.vm_mgr.get_process_by_ip(suspicious_ip)
+        proc_info = f"{proc_name} (PID: {pid})" if proc_name else "Unknown (Too fast to catch)"
         
-        self.unique_blocked_ips.add(malicious_ip)
-        self.detected_processes.add(proc_info)
+        country = rep_data.get("country") or "Unknown"
+        isp = rep_data.get("isp") or "Unknown"
+        reason = rep_data.get("reason") or "Suspicious Reputation"
+        
+        self.suspicious_events.append({
+            "process": proc_info,
+            "ip": f"{suspicious_ip} ({country}, {isp})",
+            "reason": reason,
+            "time": datetime.now().strftime('%H:%M:%S')
+        })
 
-        self.blocked_count += 1
+    def _analyze_and_block(self, malicious_ip): 
+        time.sleep(1.5)       
+        proc_name, pid, _ = self.vm_mgr.get_process_by_ip(malicious_ip)
+        
+        if not proc_name:
+            proc_info = "Unknown (Too fast to catch)"
+        else:
+            proc_info = f"{proc_name} (PID: {pid})"
+        
+        self.threat_events.append({
+            "process": proc_info,
+            "ip": malicious_ip,
+            "time": datetime.now().strftime('%H:%M:%S')
+        })
 
         try:
             self.vm_mgr.execute_remote(f"sudo iptables -A OUTPUT -d {malicious_ip} -j DROP")
-        except Exception as e:
-            print(f"[!] Action failed: {e}")
+        except:
+            pass
 
     def get_analysis_summary(self):
-            """
-            Generate behavioral security verdict.
-            """
-            verdict = "CLEAN"
-            color = Fore.GREEN
-            recommendation = "File appears safe for execution."
-            
-            if self.blocked_count > 0:
-                verdict = "MALICIOUS"
-                color = Fore.RED
-                recommendation = "DANGER: This file attempted to contact known malicious servers. DO NOT RUN."
-            elif len(self.suspicious_ips) > 0:
-                verdict = "SUSPICIOUS (Heuristic)"
-                color = Fore.MAGENTA
-                recommendation = f"Warning: Connections flagged as suspicious by IP reputation: {', '.join(self.suspicious_ips)}"
-            elif self.total_packets > 300:
-                verdict = "SUSPICIOUS"
-                color = Fore.YELLOW
-                recommendation = "Warning: Unusual amount of network activity detected."
-            
-            self._log_final_report(verdict, recommendation)
-
-            return {
-                "verdict": verdict,
-                "color": color,
-                "blocked_count": self.blocked_count,
-                "unique_ips": list(self.unique_blocked_ips),
-                "total_packets": self.total_packets,
-                "suspicious_ips": list(self.suspicious_ips),
-                "detected_processes": list(self.detected_processes),
-                "recommendation": recommendation
-            }
+        blocked_count = len(self.threat_events)
+        verdict = "CLEAN"
+        color = Fore.GREEN
+        recommendation = "File appears safe for execution."
         
-    def _log_final_report(self, verdict, recommendation):
-        """
-        Writes the final summary to the log file.
-        """
+        if blocked_count > 0:
+            verdict = "MALICIOUS"
+            color = Fore.RED
+            recommendation = "DANGER: This file attempted to contact known malicious servers."
+        elif len(self.suspicious_events) > 0:
+            verdict = "SUSPICIOUS (Heuristic)"
+            color = Fore.MAGENTA
+            recommendation = "Warning: Connections flagged as suspicious by IP reputation."
+        
+        return {
+            "verdict": verdict,
+            "color": color,
+            "blocked_count": blocked_count,
+            "total_packets": self.total_packets,
+            "suspicious_events": self.suspicious_events,
+            "threat_events": self.threat_events,
+            "recommendation": recommendation
+        }
+        
+    def _log_final_report(self, summary):
         with open(self.log_path, "a", encoding="utf-8") as f:
             f.write(f"\n{'='*70}\n")
-            f.write(f"  ANALYSIS COMPLETE - VERDICT: [ {verdict} ]\n")
+            f.write(f"  ANALYSIS COMPLETE - VERDICT: [ {summary['verdict']} ]\n")
             f.write(f"{'='*70}\n")
-            f.write(f"  - Total Packets Scanned: {self.total_packets}\n")
-            f.write(f"  - Malicious Connections: {self.blocked_count}\n")
+            f.write(f"  - Total Packets Scanned: {summary['total_packets']}\n")
+            f.write(f"  - Malicious Connections: {summary['blocked_count']}\n\n")
+            
             f.write(f"  - Processes involved in threats:\n")
-            for i in range(len(list(self.detected_processes))):
-                f.write(f"    Proccess: {list(self.detected_processes)[i]} | Blocked IP: {list(self.unique_blocked_ips)[i]}\n")
-            f.write(f"  - Suspicious IPs:\n")
-            for ip in list(self.suspicious_ips):
-                f.write(f"    {ip}\n")
-            f.write(f"  - Recommendation: {recommendation}\n")
+            for event in summary['threat_events']:
+                f.write(f"    [{event['time']}] Process: {event['process']} | Blocked IP: {event['ip']}\n")
+            
+            f.write(f"\n  - Suspicious Processes & IPs:\n")
+            for s_event in summary['suspicious_events']:
+                f.write(f"    [{s_event['time']}] Process: {s_event['process']} | IP: {s_event['ip']} | Reason: {s_event['reason']}\n")
+                
+            f.write(f"\n  - Recommendation: {summary['recommendation']}\n")
             f.write(f"{'='*70}\n")
+    
+    def _display_final_report(self):
+        summary = self.get_analysis_summary()
+        c = summary['color']
+        print(f"\n{c}{Style.BRIGHT}{'='*70}")
+        print(f"{c}{Style.BRIGHT}  ANALYSIS COMPLETE - VERDICT: [ {summary['verdict']} ]")
+        print(f"{c}{Style.BRIGHT}{'='*70}")
+        print(f"{Fore.WHITE}  - Total Packets Scanned: {summary['total_packets']}")
+        print(f"{Fore.WHITE}  - Malicious Connections: {summary['blocked_count']}")
         
+        if summary['threat_events']:
+            print(f"\n  - Processes involved in threats:")
+            for event in summary['threat_events']:
+                print(f"    [{event['time']}] Process: {event['process']} | Blocked IP: {event['ip']}")
+        
+        if summary['suspicious_events']:
+            print(f"{Fore.WHITE}\n  - Suspicious Processes & IPs:")
+            for s_event in summary['suspicious_events']:
+                print(f"    [{s_event['time']}] Process: {s_event['process']} | IP: {s_event['ip']}")
+                print(f"               Reason: {s_event['reason']}")
+        
+        print(f"\n{c}  Recommendation: {summary['recommendation']}")
+        print(f"{c}{Style.BRIGHT}{'='*70}\n")
+         
+        self._log_final_report(summary)
