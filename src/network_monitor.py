@@ -17,7 +17,7 @@ class NetworkMonitor:
         os.makedirs(report_dir, exist_ok=True)
         self.log_path = os.path.join(report_dir, f"traffic_log_{local_time}.txt")
 
-        self.allowed_ips = ["127.0.0.1", "8.8.8.8"]
+        self.allowed_ips = ["127.0.0.1", "8.8.8.8", "2.2.2.2"]
         self.intel_utility = ThreatIntelUtility()
         self.intel_utility.fetch_malicious_ips()
         
@@ -91,9 +91,9 @@ class NetworkMonitor:
 
     def _record_suspicious(self, suspicious_ip, rep_data):
         time.sleep(1.5)
-        proc_name, pid, _ = self.vm_mgr.get_process_by_ip(suspicious_ip)
-        proc_info = f"{proc_name} (PID: {pid})" if proc_name else "Unknown (Too fast to catch)"
-        
+        proc_name, pid, fd = self.vm_mgr.get_process_by_ip(suspicious_ip)
+        proc_info = f"{proc_name} (PID: {pid}) (FD: {fd})" if proc_name else "Unknown (Too fast to catch)"
+
         country = rep_data.get("country") or "Unknown"
         isp = rep_data.get("isp") or "Unknown"
         reason = rep_data.get("reason") or "Suspicious Reputation"
@@ -107,12 +107,12 @@ class NetworkMonitor:
 
     def _analyze_and_block(self, malicious_ip): 
         time.sleep(1.5)       
-        proc_name, pid, _ = self.vm_mgr.get_process_by_ip(malicious_ip)
+        proc_name, pid, fd = self.vm_mgr.get_process_by_ip(malicious_ip)
         
         if not proc_name:
             proc_info = "Unknown (Too fast to catch)"
         else:
-            proc_info = f"{proc_name} (PID: {pid})"
+            proc_info = f"{proc_name} (PID: {pid}) (FD: {fd})"
         
         self.threat_events.append({
             "process": proc_info,
