@@ -19,7 +19,10 @@ scapy==2.5.0requests==2.31.0colorama==0.4.6paramiko==2.12.0
 -   Install and enable SSH:
 
 ```bash
-sudo apt updatesudo apt install openssh-server -ysudo systemctl enable --now ssh
+sudo apt update
+```
+```bash
+sudo apt install openssh-server -ysudo systemctl enable --now ssh
 ```
 
 -   Set network:
@@ -28,9 +31,11 @@ sudo apt updatesudo apt install openssh-server -ysudo systemctl enable --now ssh
 ### 2. Sandbox Initialization (Inside VM)
 
 ```bash
-sudo ip route add default via 192.168.56.1sudo bash -c 'while true; do ss -tupn >> /tmp/network_log.txt; sleep 1; done' &
+sudo ip route add default via 192.168.56.1
 ```
-
+```bash
+sudo bash -c 'while true; do ss -tupn >> /tmp/network_log.txt; sleep 1; done' &
+```
 ### 3. go to 'config.py' and set the values according to your VM details.
 
 ### 4. Install dependencies (On Host Machine):
@@ -42,7 +47,7 @@ pip install -r requirements.txt
 ### 5. Execution (On Host Machine)
 
 ```bash
-python -m src.main --sample shared/samples/safe_test.py
+python -m src.main --sample samples/safe_test.py
 ```
 
 ## What happens?
